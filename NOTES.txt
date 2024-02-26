@@ -1,0 +1,57 @@
+# https://learn.microsoft.com/en-us/windows/dev-environment/javascript/nodejs-on-wsl
+
+# To change the version of Node.js you would like to use for a project, create a new project directory mkdir
+# NodeTest, and enter the directory cd NodeTest, then enter nvm use node to switch to the Current version,
+# or nvm use --lts to switch to the LTS version. You can also use the specific number for any additional
+# versions you've installed, like nvm use v8.2.1. (To list all of the versions of Node.js available, use
+# the command: nvm ls-remote).
+
+cd /mnt/c/Users/markj/sb/my_asreview/
+
+# Install curl
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/master/install.sh | bash
+
+# To verify installation. this should return nvm
+command -v nvm
+
+# List which versions of Node are currently installed (should be none at this point)
+nvm ls
+
+# Install the current stable LTS release of Node.js (recommended for production applications):
+nvm install --lts
+
+# Install the current release of Node.js (for testing latest Node.js features and improvements, but more likely to have issues)
+nvm install node
+
+# Now you should see the two versions that you just installed listed
+nvm ls
+
+# Verify that Node.js is installed and the currently default version
+node --version
+
+# Then verify that you have npm as well
+npm --version
+
+# Install ASReview in editable mode (Install .[dev] (whatever that is))
+python3 -m venv venv
+source venv/bin/activate
+pip install -e .[dev]
+
+# Navigate into asreview/webapp and install NPM packages
+cd asreview/webapp/
+npm install
+
+# Gives error, solve it with
+mv node_modules/ node_modules_foo # Or rm node_modules
+npm i
+
+## Setting up servers
+
+# Start the Flask app
+cd asreview/webapp
+flask run --debug
+
+# Start the local front end application running on a Node server.
+cd asreview/webapp
+npm start
+
