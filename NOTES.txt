@@ -56,7 +56,8 @@ cd asreview/webapp
 npm start
 
 ###########################################################
-# To install
+# To install virtualenv on PythonAnywhere
 pip install --upgrade pip setuptools
 pip install wheel
 python setup.py bdist_wheel 
+pipi install -r requirements_pythonanywhere.txt
