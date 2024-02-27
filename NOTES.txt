@@ -55,3 +55,8 @@ flask run --debug
 cd asreview/webapp
 npm start
 
+###########################################################
+# To install
+pip install --upgrade pip setuptools
+pip install wheel
+python setup.py bdist_wheel 
