@@ -55,3 +55,11 @@ flask run --debug
 cd asreview/webapp
 npm start
 
+###########################################################
+# To install virtualenv on PythonAnywhere
+python3.8 -m venv venv
+source venv/bin/activate
+pip install --upgrade pip setuptools
+pip install wheel
+python setup.py bdist_wheel 
+pip install -r requirements_pythonanywhere.txt
