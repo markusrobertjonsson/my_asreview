@@ -892,6 +892,12 @@ def api_import_project():
         return response, 400
 
     try:
+        p = asreview_path()
+    except Exception as err:
+        logging.error(err)
+        raise ValueError("Failed asreview_path().")
+
+    try:
         project = asr.Project.load(
             request.files["file"], asreview_path(), safe_import=True
         )
