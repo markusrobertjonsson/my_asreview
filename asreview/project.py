@@ -645,7 +645,9 @@ class Project:
 
         # location to copy file to
         # Move the project from the temp folder to the projects folder.
-        os.replace(tmpdir, Path(project_path, project_config["id"]))
+        # os.replace(tmpdir, Path(project_path, project_config["id"]))
+        shutil.copytree(tmpdir, Path(project_path, project_config["id"]))
+        shutil.rmtree(tmpdir)
 
         return cls(Path(project_path, project_config["id"]))
 
