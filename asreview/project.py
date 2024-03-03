@@ -647,7 +647,10 @@ class Project:
         # Move the project from the temp folder to the projects folder.
         # os.replace(tmpdir, Path(project_path, project_config["id"]))
         shutil.copytree(tmpdir, Path(project_path, project_config["id"]))
-        shutil.rmtree(tmpdir)
+        try:
+            shutil.rmtree(tmpdir)
+        except OSError as e:
+            print(f"shutil.rmtree(tmpdir) failed: {e}")
 
         return cls(Path(project_path, project_config["id"]))
 
