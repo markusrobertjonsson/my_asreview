@@ -22,29 +22,8 @@ def _deprecated_func(msg):
     def dec(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
-            warnings.warn(msg, stacklevel=2)
+            warnings.warn(msg)
             return func(*args, **kwargs)
-
-        return wrapper
-
-    return dec
-
-
-def _deprecated_kwarg(kwarg_map):
-    def dec(func):
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            new_kwargs = {}
-            for k, v in kwargs.items():
-                if k in kwarg_map:
-                    warnings.warn(
-                        f"Keyword argument '{k}' is deprecated. "
-                        "Use '{kwarg_map[k]}' instead.",
-                        DeprecationWarning,
-                        stacklevel=2,
-                    )  # noqa
-                new_kwargs[kwarg_map.get(k, k)] = v
-            return func(*args, **new_kwargs)
 
         return wrapper
 
@@ -53,10 +32,7 @@ def _deprecated_kwarg(kwarg_map):
 
 class DeprecateAction(argparse.Action):
     def __call__(self, parser, namespace, values, option_string=None):
-        logging.warning(
-            f"Argument {self.option_strings} is deprecated and is ignored.",
-            stacklevel=2,
-        )
+        logging.warning(f"Argument {self.option_strings} is deprecated and is ignored.")
         delattr(namespace, self.dest)
 
 
