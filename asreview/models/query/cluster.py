@@ -18,7 +18,7 @@ import numpy as np
 from sklearn.cluster import KMeans
 
 from asreview.models.query.base import ProbaQueryStrategy
-from asreview.models.query.max_prob import MaxQuery
+from asreview.models.query.max import MaxQuery
 from asreview.utils import get_random_state
 
 
@@ -44,7 +44,7 @@ class ClusterQuery(ProbaQueryStrategy):
 
     def __init__(self, cluster_size=350, update_interval=200, random_state=None):
         """Initialize the clustering strategy."""
-        super().__init__()
+        super(ClusterQuery, self).__init__()
         self.cluster_size = cluster_size
         self.update_interval = update_interval
         self.last_update = None
@@ -95,3 +95,12 @@ class ClusterQuery(ProbaQueryStrategy):
         clust_idx = np.array(clust_idx, dtype=int)
 
         return clust_idx
+
+    def full_hyper_space(self):
+        from hyperopt import hp
+
+        parameter_space = {
+            "qry_cluster_size": hp.quniform("qry_cluster_size", 50, 1000, 1),
+            "qry_update_interval": hp.quniform("qry_update_interval", 100, 300, 1),
+        }
+        return parameter_space, {}

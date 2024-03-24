@@ -15,6 +15,7 @@
 __all__ = [
     "BaseDataGroup",
     "BaseDataSet",
+    "BenchmarkDataGroup",
     "DatasetManager",
     "DatasetNotFoundError",
     "NaturePublicationDataGroup",
@@ -25,6 +26,7 @@ __all__ = [
 import json
 import socket
 import tempfile
+import warnings
 from abc import ABC
 from abc import abstractmethod
 from pathlib import Path
@@ -34,7 +36,7 @@ from urllib.request import urlretrieve
 
 import synergy_dataset as sd
 
-from asreview.data.tabular import CSVReader
+from asreview.io import CSVReader
 from asreview.utils import _entry_points
 from asreview.utils import _get_filename_from_url
 from asreview.utils import is_iterable
@@ -80,7 +82,7 @@ class BaseDataSet:
         img_url=None,
         license=None,
         year=None,
-        aliases=None,
+        aliases=[],
         **kwargs,
     ):
         """Base class for metadata of dataset.
@@ -134,8 +136,6 @@ class BaseDataSet:
 
         """
 
-        if aliases is None:
-            aliases = []
         self.dataset_id = dataset_id
         self.filepath = filepath
         self.title = title
@@ -406,7 +406,7 @@ class NaturePublicationDataGroup(BaseDataGroup):
         meta_file = "https://raw.githubusercontent.com/asreview/paper-asreview/master/index_v1.json"  # noqa
         datasets = _download_from_metadata(meta_file)
 
-        super().__init__(*datasets)
+        super(NaturePublicationDataGroup, self).__init__(*datasets)
 
 
 class SynergyDataSet(BaseDataSet):
@@ -744,4 +744,27 @@ class SynergyDataGroup(BaseDataGroup):
 
         datasets = [SynergyDataSet(k, **v) for k, v in synergy_metadata.items()]
 
-        super().__init__(*datasets)
+        super(SynergyDataGroup, self).__init__(*datasets)
+
+
+class BenchmarkDataGroup(BaseDataGroup):
+    """Datasets available in the benchmark platform.
+    Deprecated
+    """
+
+    group_id = "benchmark"
+    description = "DEPRECATED: Datasets available in the online benchmark platform"
+
+    def __init__(self):
+
+        warnings.warn(
+            "The use of 'benchmark' datasets is deprecated, "
+            "use SYNERGY dataset instead. For more information, see "
+            "https://github.com/asreview/synergy-dataset.",
+            category=UserWarning
+        )
+
+        meta_file = "https://raw.githubusercontent.com/asreview/systematic-review-datasets/master/index_v1.json"  # noqa
+        datasets = _download_from_metadata(meta_file)
+
+        super(BenchmarkDataGroup, self).__init__(*datasets)

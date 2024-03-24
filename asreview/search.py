@@ -12,15 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-__all__ = ["fuzzy_find"]
+__all__ = ["SearchError", "fuzzy_find"]
 
 import re
 from difflib import SequenceMatcher
 
 import numpy as np
-import pandas as pd
 
 from asreview.utils import format_to_str
+
+
+class SearchError(Exception):
+    pass
 
 
 def _create_inverted_index(match_strings):
@@ -37,7 +40,32 @@ def _create_inverted_index(match_strings):
     return index
 
 
-def _get_fuzzy_scores(keywords, match_strings, threshold=0.9):
+def _match_best(keywords, index, match_strings, threshold=0.9):
+    n_match = len(match_strings)
+    word = re.compile(r"['\w]+")
+    key_list = word.findall(keywords.lower())
+
+    ratios = np.zeros(n_match)
+    for key in key_list:
+        cur_ratios = {}
+        s = SequenceMatcher()
+        s.set_seq2(key)
+        for token in index:
+            s.set_seq1(token)
+            ratio = s.quick_ratio()
+            if ratio < threshold:
+                continue
+            for idx in index[token]:
+                if ratio > cur_ratios.get(idx, 0.0):
+                    cur_ratios[idx] = ratio
+
+        for idx, rat in cur_ratios.items():
+            ratios[idx] += rat
+
+    return (100 * ratios) / len(key_list)
+
+
+def _get_fuzzy_scores(keywords, match_strings):
     """Rank a list of strings, depending on a set of keywords.
 
     Arguments
@@ -53,37 +81,39 @@ def _get_fuzzy_scores(keywords, match_strings, threshold=0.9):
         Array of scores ordered in the same way as the str_list input.
     """
     inv_index = _create_inverted_index(match_strings)
+    return _match_best(keywords, inv_index, match_strings)
 
-    n_match = len(match_strings)
-    word = re.compile(r"['\w]+")
-    key_list = word.findall(keywords.lower())
 
-    ratios = np.zeros(n_match)
-    for key in key_list:
-        cur_ratios = {}
-        s = SequenceMatcher()
-        s.set_seq2(key)
-        for token in inv_index:
-            s.set_seq1(token)
-            ratio = s.quick_ratio()
-            if ratio < threshold:
-                continue
-            for idx in inv_index[token]:
-                if ratio > cur_ratios.get(idx, 0.0):
-                    cur_ratios[idx] = ratio
+def _match_string(as_data):
+    match_str = np.full(len(as_data), "x", dtype=object)
 
-        for idx, rat in cur_ratios.items():
-            ratios[idx] += rat
+    all_titles = as_data.title
+    all_authors = as_data.authors
+    all_keywords = as_data.keywords
 
-    return (100 * ratios) / len(key_list)
+    if all_titles is None:
+        raise SearchError("Cannot search dataset without titles.")
+
+    for i in range(len(as_data)):
+        match_list = []
+
+        # add titles
+        match_list.append(all_titles[i])
+
+        # add authors if present
+        if all_authors is not None:
+            match_list.append(format_to_str(all_authors[i]))
+
+        # add keywords if present
+        if all_keywords is not None:
+            match_list.append(format_to_str(all_keywords[i]))
+
+        match_str[i,] = " ".join(match_list)
+    return match_str
 
 
 def fuzzy_find(
-    as_data,
-    keywords,
-    threshold=60,
-    max_return=10,
-    exclude=None,
+    as_data, keywords, threshold=60, max_return=10, exclude=None, by_index=True
 ):
     """Find a record using keywords.
 
@@ -93,7 +123,7 @@ def fuzzy_find(
 
     Arguments
     ---------
-    as_data: asreview.Dataset
+    as_data: asreview.data.ASReviewData
         ASReview data object to search
     keywords: str
         A string of keywords together, can be a combination.
@@ -104,31 +134,26 @@ def fuzzy_find(
     exclude: list, numpy.ndarray
         List of indices that should be excluded in the search. You would
         put papers that were already labeled here for example.
+    by_index: bool
+        If True, use internal indexing.
+        If False, use record ids for indexing.
 
     Returns
     -------
     list
         Sorted list of indexes that match best the keywords.
     """
-
-    if as_data.title is None:
-        raise ValueError("Cannot search dataset without titles.")
-
-    all_strings = pd.Series(as_data.title).fillna("")
-
-    if as_data.authors is not None:
-        all_strings += " " + pd.Series(as_data.authors).map(format_to_str).fillna("")
-
-    if as_data.keywords is not None:
-        all_strings += " " + pd.Series(as_data.keywords).map(format_to_str).fillna("")
-
-    new_ranking = _get_fuzzy_scores(keywords, all_strings.values)
+    new_ranking = _get_fuzzy_scores(keywords, _match_string(as_data))
     sorted_idx = np.argsort(-new_ranking)
     best_idx = []
     if exclude is None:
         exclude = np.array([], dtype=int)
     for idx in sorted_idx:
-        if idx in exclude:
+        if (
+            (not by_index and as_data.df.index.values[idx] in exclude)
+            or by_index
+            and idx in exclude
+        ):
             continue
         if len(best_idx) >= max_return:
             break
@@ -136,4 +161,6 @@ def fuzzy_find(
             break
         best_idx.append(idx)
     fuzz_idx = np.array(best_idx, dtype=int)
+    if not by_index:
+        fuzz_idx = as_data.df.index.values[fuzz_idx]
     return fuzz_idx.tolist()

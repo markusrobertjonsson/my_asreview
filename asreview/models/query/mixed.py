@@ -67,10 +67,10 @@ class MixedQuery(BaseQueryStrategy):
         strategy_2="random",
         mix_ratio=0.95,
         random_state=None,
-        **kwargs,
+        **kwargs
     ):
         """Initialize the Mixed query strategy."""
-        super().__init__()
+        super(MixedQuery, self).__init__()
 
         self.strategy_1 = strategy_1
         self.strategy_2 = strategy_2
@@ -142,6 +142,27 @@ class MixedQuery(BaseQueryStrategy):
         else:
             return ranking
 
+    def full_hyper_space(self):
+        from hyperopt import hp
+
+        space_1, choices_1 = self.query_model1.hyper_space()
+        space_2, choices_2 = self.query_model2.hyper_space()
+        parameter_space = {}
+        hyper_choices = {}
+        for key, value in space_1.items():
+            new_key = "qry_" + self.strategy_1 + key[4:]
+            parameter_space[new_key] = value
+            hyper_choices[new_key] = choices_1[key]
+
+        for key, value in space_2.items():
+            new_key = "qry_" + self.strategy_2 + key[4:]
+            parameter_space[new_key] = value
+            hyper_choices[new_key] = choices_2[key]
+
+        parameter_space["qry_mix_ratio"] = hp.uniform("qry_mix_ratio", 0, 1)
+
+        return parameter_space, hyper_choices
+
     @property
     def name(self):
         return "_".join([self.strategy_1, self.strategy_2])
@@ -161,12 +182,12 @@ class MaxRandomQuery(MixedQuery):
 
     def __init__(self, mix_ratio=0.95, random_state=None, **kwargs):
         """Initialize the Mixed (Maximum and Random) query strategy."""
-        super().__init__(
+        super(MaxRandomQuery, self).__init__(
             strategy_1="max",
             strategy_2="random",
             mix_ratio=mix_ratio,
             random_state=random_state,
-            **kwargs,
+            **kwargs
         )
 
 
@@ -184,10 +205,10 @@ class MaxUncertaintyQuery(MixedQuery):
 
     def __init__(self, mix_ratio=0.95, random_state=None, **kwargs):
         """Initialize the Mixed (Maximum and Uncertainty) query strategy."""
-        super().__init__(
+        super(MaxUncertaintyQuery, self).__init__(
             strategy_1="max",
             strategy_2="uncertainty",
             mix_ratio=mix_ratio,
             random_state=random_state,
-            **kwargs,
+            **kwargs
         )
