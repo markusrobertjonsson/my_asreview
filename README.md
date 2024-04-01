@@ -1,3 +1,22 @@
+my_asreview
+===========
+
+How to run
+----------
+```bash
+git clone git@github.com:markusrobertjonsson/my_asreview.git 
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+cd asreview/webapp
+flask run
+```
+
+<p>  </p>
+
+Original
+========
+
 <p align="center">
   <a href="https://github.com/asreview/asreview">
     <img width="60%" height="60%" src="https://raw.githubusercontent.com/asreview/asreview-artwork/master/LogoASReview/SVG/GitHub_Repo_Card_Transparent.svg">
