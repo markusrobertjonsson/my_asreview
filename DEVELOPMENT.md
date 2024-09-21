@@ -11,14 +11,14 @@ Install Python and [Node.js](https://nodejs.org/en) (we use Node v20).
 Install ASReview in editable mode
 
 ```sh
-pip install -e .[dev]
+pip install -e ".[dev]"
 ```
 
-Navigate into `asreview/webapp` and install NPM packages
+Navigate into `asreview/webapp` and install NPM packages (with clean-install)
 
 ```sh
 cd asreview/webapp
-npm install
+npm ci
 ```
 
 ### Setting up servers
@@ -133,7 +133,7 @@ pip install asreview[dev]
 Run the following commands to lint and format:
 
 ```sh
-ruff .
+ruff check .
 ruff format .
 ```
 
