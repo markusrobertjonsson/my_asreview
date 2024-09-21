@@ -16,68 +16,155 @@ import argparse
 import logging
 from pathlib import Path
 
+import pandas as pd
 from filelock import FileLock
 from filelock import Timeout
 
-from asreview.models.balance import get_balance_model
-from asreview.models.classifiers import get_classifier
-from asreview.models.feature_extraction import get_feature_model
-from asreview.models.query import get_query_model
-from asreview.project import ASReviewProject
-from asreview.project import open_state
-from asreview.review.base import BaseReview
+import asreview as asr
+from asreview.config import LABEL_NA
+from asreview.config import PROJECT_MODE_SIMULATE
+from asreview.extensions import load_extension
+from asreview.settings import ReviewSettings
+from asreview.simulation.simulate import Simulate
+from asreview.state.contextmanager import open_state
 
 
-def run_model_entry_point(argv):
+def _run_model_start(project):
+    with open_state(project) as s:
+        if not s.exist_new_labeled_records:
+            return
 
-    # parse arguments
-    parser = argparse.ArgumentParser()
-    parser.add_argument("project_path", type=str, help="Project id")
-    parser.add_argument(
-        "--output_error",
-        dest="output_error",
-        action="store_true",
-        help="Save training error message to file.",
-    )
-    args = parser.parse_args(argv)
-
-    project = ASReviewProject(args.project_path)
+        if s.get_results_table("label")["label"].value_counts().shape[0] < 2:
+            return
 
     try:
-
-        # Check if there are new labeled records to train with
-        with open_state(project.project_path) as state:
-            if not state.exist_new_labeled_records:
-                return
-
-        # Lock so that only one training run is running at the same time.
         lock = FileLock(Path(project.project_path, "training.lock"), timeout=0)
 
+        settings = ReviewSettings().from_file(
+            Path(
+                project.project_path,
+                "reviews",
+                project.reviews[0]["id"],
+                "settings_metadata.json",
+            )
+        )
+
         with lock:
+            as_data = project.read_data()
+
+            feature_model = load_extension(
+                "models.feature_extraction", settings.feature_extraction
+            )()
+            try:
+                fm = project.get_feature_matrix(feature_model)
+            except FileNotFoundError:
+                fm = feature_model.fit_transform(
+                    as_data.texts, as_data.headings, as_data.bodies, as_data.keywords
+                )
+                project.add_feature_matrix(fm, feature_model)
 
             with open_state(project) as state:
-                settings = state.settings
+                labeled = state.get_results_table(columns=["record_id", "label"])
 
-            reviewer = BaseReview(
-                project.read_data(),
-                project,
-                model=get_classifier(settings.model),
-                query_model=get_query_model(settings.query_strategy),
-                balance_model=get_balance_model(settings.balance_strategy),
-                feature_model=get_feature_model(settings.feature_extraction),
-                # random_state = get_random_state(seed)  # todo
+            y_input = (
+                pd.DataFrame({"record_id": as_data.record_ids})
+                .merge(labeled, how="left", on="record_id")["label"]
+                .fillna(LABEL_NA)
             )
 
-            reviewer.train()
+            if settings.balance_strategy is not None:
+                balance_model = load_extension(
+                    "models.balance", settings.balance_strategy
+                )()
+                balance_model_name = balance_model.name
+                X_train, y_train = balance_model.sample(
+                    fm, y_input, labeled["record_id"].values
+                )
+            else:
+                X_train, y_train = fm, y_input
+                balance_model_name = None
 
-        project.update_review(status="review")
+            classifier = load_extension("models.classifiers", settings.classifier)()
+            classifier.fit(X_train, y_train)
+            relevance_scores = classifier.predict_proba(fm)
+
+            query_strategy = load_extension("models.query", settings.query_strategy)()
+            ranked_record_ids = query_strategy.query(
+                feature_matrix=fm, relevance_scores=relevance_scores
+            )
+
+            with open_state(project) as state:
+                state.add_last_ranking(
+                    ranked_record_ids,
+                    classifier.name,
+                    query_strategy.name,
+                    balance_model_name,
+                    feature_model.name,
+                    len(labeled),
+                )
+
+            project.remove_review_error()
 
     except Timeout:
         logging.debug("Another iteration is training")
 
     except Exception as err:
-        project.set_error(err, save_error_message=args.output_error)
+        project.set_review_error(err)
         raise err
 
+
+def _simulate_start(project):
+    as_data = project.read_data()
+
+    settings = ReviewSettings().from_file(
+        Path(
+            project.project_path,
+            "reviews",
+            project.reviews[0]["id"],
+            "settings_metadata.json",
+        )
+    )
+
+    with open_state(project) as state:
+        priors = state.get_priors()["record_id"].tolist()
+
+    feature_model = load_extension(
+        "models.feature_extraction", settings.feature_extraction
+    )()
+    fm = feature_model.fit_transform(
+        as_data.texts, as_data.headings, as_data.bodies, as_data.keywords
+    )
+    project.add_feature_matrix(fm, feature_model)
+
+    if settings.balance_strategy is not None:
+        balance_model = load_extension("models.balance", settings.balance_strategy)()
     else:
-        project.update_review(status="review")
+        balance_model = None
+
+    sim = Simulate(
+        fm,
+        labels=as_data.labels,
+        classifier=load_extension("models.classifiers", settings.classifier)(),
+        query_strategy=load_extension("models.query", settings.query_strategy)(),
+        balance_strategy=balance_model,
+        feature_extraction=feature_model,
+    )
+    try:
+        sim.label(priors, prior=True)
+        sim.review()
+    except Exception as err:
+        project.set_review_error(err)
+        raise err
+
+    project.update_review(state=sim, status="finished")
+
+
+def main(argv):
+    parser = argparse.ArgumentParser()
+    parser.add_argument("project", type=asr.Project, help="Project path")
+    args = parser.parse_args(argv)
+
+    if args.project.config["mode"] == PROJECT_MODE_SIMULATE:
+        _simulate_start(args.project)
+    else:
+        _run_model_start(args.project)

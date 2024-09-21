@@ -15,9 +15,7 @@
 __all__ = [
     "BaseDataGroup",
     "BaseDataSet",
-    "BenchmarkDataGroup",
     "DatasetManager",
-    "DatasetNotFoundError",
     "NaturePublicationDataGroup",
     "SynergyDataGroup",
     "SynergyDataSet",
@@ -26,7 +24,6 @@ __all__ = [
 import json
 import socket
 import tempfile
-import warnings
 from abc import ABC
 from abc import abstractmethod
 from pathlib import Path
@@ -36,14 +33,9 @@ from urllib.request import urlretrieve
 
 import synergy_dataset as sd
 
-from asreview.io import CSVReader
-from asreview.utils import _entry_points
+from asreview.data.tabular import CSVReader
+from asreview.extensions import extensions
 from asreview.utils import _get_filename_from_url
-from asreview.utils import is_iterable
-
-
-class DatasetNotFoundError(Exception):
-    pass
 
 
 def _download_from_metadata(url):
@@ -82,7 +74,7 @@ class BaseDataSet:
         img_url=None,
         license=None,
         year=None,
-        aliases=[],
+        aliases=None,
         **kwargs,
     ):
         """Base class for metadata of dataset.
@@ -136,6 +128,8 @@ class BaseDataSet:
 
         """
 
+        if aliases is None:
+            aliases = []
         self.dataset_id = dataset_id
         self.filepath = filepath
         self.title = title
@@ -254,13 +248,13 @@ class BaseDataGroup(ABC):
         elif len(results) == 1:
             return results[0]
 
-        raise DatasetNotFoundError(f"Dataset {dataset_id} not found")
+        raise ValueError(f"Dataset {dataset_id} not found")
 
 
 class DatasetManager:
     @property
     def groups(self):
-        return list(_entry_points(group="asreview.datasets").names)
+        return list(extensions("datasets").names)
 
     def find(self, dataset_id):
         """Find a dataset.
@@ -281,9 +275,6 @@ class DatasetManager:
         BaseDataSet:
             Return the dataset with dataset_id.
         """
-        # If dataset_id is a non-string iterable, return a list.
-        if is_iterable(dataset_id):
-            return [self.find(x) for x in dataset_id]
 
         # If dataset_id is a valid path, create a dataset from it.
         if Path(dataset_id).is_file():
@@ -292,7 +283,7 @@ class DatasetManager:
         dataset_id = str(dataset_id)
 
         # get installed dataset groups
-        dataset_groups = _entry_points(group="asreview.datasets")
+        dataset_groups = extensions("datasets")
 
         # Split into group/dataset if possible.
         split_dataset_id = dataset_id.split(":")
@@ -323,7 +314,7 @@ class DatasetManager:
             return list(all_results.values())[0]
 
         # Could not find dataset
-        raise DatasetNotFoundError(f"Dataset {dataset_id} not found")
+        raise ValueError(f"Dataset {dataset_id} not found")
 
     def list(self, include=None, exclude=None, serialize=True, raise_on_error=False):
         """List the available datasets.
@@ -349,16 +340,15 @@ class DatasetManager:
             raise ValueError("Cannot exclude groups when include is not None.")
 
         if include is not None:
-            if not is_iterable(include):
-                include = [include]
+            include = [include] if isinstance(include, str) else include
             groups = include
         elif exclude is not None:
-            exclude = exclude if is_iterable(exclude) else [exclude]
+            exclude = [exclude] if isinstance(exclude, str) else exclude
             groups = list(set(self.groups) - set(exclude))
         else:
             groups = self.groups.copy()
 
-        dataset_groups = _entry_points(group="asreview.datasets")
+        dataset_groups = extensions("datasets")
 
         group_list = []
         for group in groups:
@@ -406,7 +396,7 @@ class NaturePublicationDataGroup(BaseDataGroup):
         meta_file = "https://raw.githubusercontent.com/asreview/paper-asreview/master/index_v1.json"  # noqa
         datasets = _download_from_metadata(meta_file)
 
-        super(NaturePublicationDataGroup, self).__init__(*datasets)
+        super().__init__(*datasets)
 
 
 class SynergyDataSet(BaseDataSet):
@@ -744,27 +734,4 @@ class SynergyDataGroup(BaseDataGroup):
 
         datasets = [SynergyDataSet(k, **v) for k, v in synergy_metadata.items()]
 
-        super(SynergyDataGroup, self).__init__(*datasets)
-
-
-class BenchmarkDataGroup(BaseDataGroup):
-    """Datasets available in the benchmark platform.
-    Deprecated
-    """
-
-    group_id = "benchmark"
-    description = "DEPRECATED: Datasets available in the online benchmark platform"
-
-    def __init__(self):
-
-        warnings.warn(
-            "The use of 'benchmark' datasets is deprecated, "
-            "use SYNERGY dataset instead. For more information, see "
-            "https://github.com/asreview/synergy-dataset.",
-            category=UserWarning
-        )
-
-        meta_file = "https://raw.githubusercontent.com/asreview/systematic-review-datasets/master/index_v1.json"  # noqa
-        datasets = _download_from_metadata(meta_file)
-
-        super(BenchmarkDataGroup, self).__init__(*datasets)
+        super().__init__(*datasets)

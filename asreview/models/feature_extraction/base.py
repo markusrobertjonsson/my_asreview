@@ -15,18 +15,31 @@
 __all__ = ["BaseFeatureExtraction"]
 
 from abc import abstractmethod
+from pathlib import Path
 
 import numpy as np
+from scipy.sparse import csr_matrix
 from scipy.sparse import hstack
 from scipy.sparse import issparse
+from scipy.sparse import load_npz
+from scipy.sparse import save_npz
 
 from asreview.models.base import BaseModel
 
 
 class BaseFeatureExtraction(BaseModel):
-    """Base class for feature extraction methods."""
+    """Base class for feature extraction methods.
+
+    Attributes
+    ----------
+    name : str
+        Name of the feature extraction method.
+    file_extension : str
+        File extension that should be used when writing the feature matrix to a file.
+    """
 
     name = "base-feature"
+    file_extension = "npz"
 
     def __init__(self, split_ta=0, use_keywords=0):
         self.split_ta = split_ta
@@ -99,12 +112,51 @@ class BaseFeatureExtraction(BaseModel):
         """
         raise NotImplementedError
 
-    def full_hyper_space(self):
-        from hyperopt import hp
+    @staticmethod
+    def read(fp):
+        """Read a feature matrix from a filepath.
 
-        hyper_choices = {}
-        hyper_space = {
-            "fex_split_ta": hp.randint("fex_split_ta", 2),
-            "fex_use_keywords": hp.randint("fex_use_keywords", 2),
-        }
-        return hyper_space, hyper_choices
+        Converts a feature matrix to sparse format and saves it at the given location.
+        Feature extraction classes that need to save the feature matrix in a different
+        format should override this method.
+
+        Parameters
+        ----------
+        fp : str, Path
+            Location where to save the feature matrix.
+        feature_matrix : convertible to `scipy.sparse.csr_matrix`
+            Feature matrix to save.
+
+        Raises
+        ------
+        ValueError
+            If the feature matrix is not convertible to `scipy.sparse.csr_matrix`
+        """
+        return load_npz(fp)
+
+    @staticmethod
+    def write(fp, feature_matrix):
+        """Write a feature matrix to a filepath.
+
+        Assumes the feature matrix is stored in scipy sparse format. Feature extraction
+        methods that need to load different format matrices should override
+        this method.
+
+        Parameters
+        ----------
+        fp : str, Path
+            Location from where to load the feature matrix.
+
+        Returns
+        -------
+        scipy.sparse.csr_matrix
+            Feature matrix in sparse format.
+        """
+        try:
+            feature_matrix = csr_matrix(feature_matrix)
+        except Exception as e:
+            raise ValueError(
+                "The feature matrix should be convertible to type "
+                "scipy.sparse.csr.csr_matrix."
+            ) from e
+        save_npz(Path(fp), feature_matrix)

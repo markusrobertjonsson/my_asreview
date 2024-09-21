@@ -18,10 +18,9 @@ from math import floor
 from math import log
 
 import numpy as np
+from sklearn.utils import check_random_state
 
 from asreview.models.balance.base import BaseBalance
-from asreview.models.balance.simple import SimpleBalance
-from asreview.utils import get_random_state
 
 
 class DoubleBalance(BaseBalance):
@@ -55,13 +54,12 @@ class DoubleBalance(BaseBalance):
     label = "Dynamic resampling (Double)"
 
     def __init__(self, a=2.155, alpha=0.94, b=0.789, beta=1.0, random_state=None):
-        super(DoubleBalance, self).__init__()
+        super().__init__()
         self.a = a
         self.alpha = alpha
         self.b = b
         self.beta = beta
-        self.fallback_model = SimpleBalance()
-        self._random_state = get_random_state(random_state)
+        self._random_state = random_state
 
     def sample(self, X, y, train_idx):
         """Resample the training data.
@@ -83,10 +81,6 @@ class DoubleBalance(BaseBalance):
         # Get inclusions and exclusions
         one_idx = train_idx[np.where(y[train_idx] == 1)]
         zero_idx = train_idx[np.where(y[train_idx] == 0)]
-
-        # Fall back to simple sampling if we have only ones or zeroes.
-        if len(one_idx) == 0 or len(zero_idx) == 0:
-            self.fallback_model.sample(X, y, train_idx)
 
         n_one = len(one_idx)
         n_zero = len(zero_idx)
@@ -110,21 +104,10 @@ class DoubleBalance(BaseBalance):
         zero_train_idx = fill_training(zero_idx, n_zero_train, self._random_state)
         # Merge and shuffle.
         all_idx = np.concatenate([one_train_idx, zero_train_idx])
-        self._random_state.shuffle(all_idx)
+        check_random_state(self._random_state).shuffle(all_idx)
 
         # Return resampled feature matrix and labels.
         return X[all_idx], y[all_idx]
-
-    def full_hyper_space(self):
-        from hyperopt import hp
-
-        parameter_space = {
-            "bal_a": hp.lognormal("bal_a", 0, 1),
-            "bal_alpha": hp.uniform("bal_alpha", 0, 2),
-            "bal_b": hp.uniform("bal_b", 0, 1),
-            # "bal_beta": hp.uniform("bal_beta", 0, 2),
-        }
-        return parameter_space, {}
 
 
 def _one_weight(n_one, n_zero, a, alpha):
@@ -146,7 +129,7 @@ def random_round(value, random_state):
     to 9, 10% of the time.
     """
     base = int(floor(value))
-    if random_state.rand() < value - base:
+    if check_random_state(random_state).rand() < value - base:
         base += 1
     return base
 
@@ -162,6 +145,7 @@ def fill_training(src_idx, n_train, random_state):
     dest_idx = np.tile(src_idx, n_copy).reshape(-1)
     # Add samples
     dest_idx = np.append(
-        dest_idx, random_state.choice(src_idx, n_sample, replace=False)
+        dest_idx,
+        check_random_state(random_state).choice(src_idx, n_sample, replace=False),
     )
     return dest_idx

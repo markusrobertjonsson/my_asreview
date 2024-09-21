@@ -18,12 +18,12 @@ from flask import current_app
 from flask import jsonify
 from flask_login import current_user
 
-from asreview.project import ASReviewProject
+import asreview as asr
 from asreview.project import ProjectNotFoundError
-from asreview.project import get_project_path
-from asreview.project import get_projects
 from asreview.project import is_project
 from asreview.webapp.authentication.models import Project
+from asreview.webapp.utils import get_project_path
+from asreview.webapp.utils import get_projects
 
 
 def project_authorization(f):
@@ -36,7 +36,7 @@ def project_authorization(f):
             project_path = get_project_path(project_id)
             if not is_project(project_path):
                 raise ProjectNotFoundError(f"Project '{project_id}' not found")
-            project = ASReviewProject(project_path, project_id=project_id)
+            project = asr.Project(project_path, project_id=project_id)
             return f(project, *args, **kwargs)
 
         # find the project
@@ -54,7 +54,7 @@ def project_authorization(f):
         project_path = get_project_path(project_id)
         if not is_project(project_path):
             raise ProjectNotFoundError(f"Project '{project_id}' not found")
-        project = ASReviewProject(project_path, project_id=project_id)
+        project = asr.Project(project_path, project_id=project_id)
 
         return f(project, *args, **kwargs)
 

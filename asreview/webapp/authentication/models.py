@@ -30,12 +30,10 @@ from sqlalchemy.orm import validates
 from werkzeug.security import check_password_hash
 from werkzeug.security import generate_password_hash
 
-import asreview.utils as utils
 from asreview.webapp import DB
+from asreview.webapp.utils import asreview_path
 
-PASSWORD_REGEX = (
-    r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$"  # noqa
-)
+PASSWORD_REGEX = r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$"  # noqa
 EMAIL_REGEX = r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,7}\b"
 
 
@@ -117,13 +115,18 @@ class User(UserMixin, DB.Model):
         self.confirmed = confirmed
         self.public = public
 
-    def update_profile(self, email, name, affiliation,
-                       old_password=None, new_password=None, public=True):
-
+    def update_profile(
+        self,
+        email,
+        name,
+        affiliation,
+        old_password=None,
+        new_password=None,
+        public=True,
+    ):
         # if there is a request to update the password, and the origin
         # is correct
-        if bool(old_password) and bool(new_password) and \
-                self.origin == "asreview":
+        if bool(old_password) and bool(new_password) and self.origin == "asreview":
             # verify the old password
             if not self.verify_password(old_password):
                 raise ValueError("Provided old password is incorrect.")
@@ -183,10 +186,7 @@ class User(UserMixin, DB.Model):
         """Checks whether provided token is correct and still valid"""
         # there must be a token and a timestamp
         if bool(self.token) and bool(self.token_created_at):
-            # what is now
-            now = dt.datetime.utcnow()
-            # get time-difference in hours
-            diff = (now - self.token_created_at).total_seconds()
+            diff = (dt.datetime.now() - self.token_created_at).total_seconds()
             # return if token is correct and we are still before deadline
             return self.token == provided_token and diff <= max_hours * 3600
         else:
@@ -195,10 +195,8 @@ class User(UserMixin, DB.Model):
     @classmethod
     def generate_token_data(cls, secret, salt, email):
         """Generate a token for verification by email"""
-        serializer = URLSafeTimedSerializer(secret)
-        token = serializer.dumps(email, salt=salt)
-        created_at = dt.datetime.utcnow()
-        return token, created_at
+        token = URLSafeTimedSerializer(secret).dumps(email, salt=salt)
+        return token, dt.datetime.now()
 
     @classmethod
     def valid_password(cls, password):
@@ -223,22 +221,14 @@ class Collaboration(DB.Model):
     __tablename__ = "collaborations"
     id = Column(Integer, primary_key=True)
     user_id = Column(
-        Integer,
-        ForeignKey("users.id", ondelete="cascade"),
-        nullable=False
+        Integer, ForeignKey("users.id", ondelete="cascade"), nullable=False
     )
     project_id = Column(
-        Integer,
-        ForeignKey("projects.id", ondelete="cascade"),
-        nullable=False
+        Integer, ForeignKey("projects.id", ondelete="cascade"), nullable=False
     )
     # make sure we have unique records in this table
     __table_args__ = (
-        UniqueConstraint(
-            "project_id",
-            "user_id",
-            name="unique_records_collaboration"
-        ),
+        UniqueConstraint("project_id", "user_id", name="unique_records_collaboration"),
     )
 
     def __repr__(self):
@@ -268,7 +258,7 @@ class Project(DB.Model):
     @property
     def project_path(self):
         """Returns full project path"""
-        return Path(utils.asreview_path(), self.project_id)
+        return Path(asreview_path(), self.project_id)
 
     @property
     def folder(self):
@@ -285,22 +275,14 @@ class CollaborationInvitation(DB.Model):
     __tablename__ = "collaboration_invitations"
     id = Column(Integer, primary_key=True)
     project_id = Column(
-        Integer,
-        ForeignKey("projects.id", ondelete="cascade"),
-        nullable=False
+        Integer, ForeignKey("projects.id", ondelete="cascade"), nullable=False
     )
     user_id = Column(
-        Integer,
-        ForeignKey("users.id", ondelete="cascade"),
-        nullable=False
+        Integer, ForeignKey("users.id", ondelete="cascade"), nullable=False
     )
     # make sure we have unique records in this table
     __table_args__ = (
-        UniqueConstraint(
-            "project_id",
-            "user_id",
-            name="unique_records_invitations"
-        ),
+        UniqueConstraint("project_id", "user_id", name="unique_records_invitations"),
     )
 
     def __repr__(self):

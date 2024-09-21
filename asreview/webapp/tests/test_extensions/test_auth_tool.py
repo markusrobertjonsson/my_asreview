@@ -6,16 +6,15 @@ from uuid import uuid4
 
 import pytest
 
+import asreview as asr
 import asreview.webapp.entry_points.auth_tool as tool
-from asreview import ASReviewProject
-from asreview.state.sql_converter import upgrade_asreview_project_file
-from asreview.utils import asreview_path
 from asreview.webapp import DB
 from asreview.webapp.entry_points.auth_tool import AuthTool
 from asreview.webapp.tests.utils import api_utils as au
 from asreview.webapp.tests.utils import config_parser as cp
 from asreview.webapp.tests.utils import crud
 from asreview.webapp.tests.utils import misc
+from asreview.webapp.utils import asreview_path
 
 
 def get_auth_tool_object(namespace):
@@ -45,38 +44,34 @@ def interactive_user_data():
 
 
 def import_2_unauthenticated_projects(with_upgrade=True):
-    """This function retrieves 2 zipped project (version 0.x)
+    """This function retrieves 2 zipped project (version 1.x)
     files from github and copies them in the asreview folder.
     To use them in tests they need to be upgraded. Both projects
     are returned."""
 
     tests_folder = Path(__file__).parent.parent
-    asreview_v0_file = Path(
+    asreview_v1_0_file = Path(
         tests_folder,
         "asreview-project-file-archive",
-        "v0.18",
-        "asreview-project-v0-18-startreview.asreview"
+        "v1.0",
+        "asreview-project-v1-0-startreview.asreview",
     )
 
-    proj1 = ASReviewProject.load(
-        open(asreview_v0_file, "rb"), asreview_path(), safe_import=True
+    proj1 = asr.Project.load(
+        open(asreview_v1_0_file, "rb"), asreview_path(), safe_import=True
     )
 
-    asreview_v0_file = Path(
+    asreview_v1_5_file = Path(
         tests_folder,
         "asreview-project-file-archive",
-        "v0.19",
-        "asreview-project-v0-19-startreview.asreview"
+        "v1.5",
+        "asreview-project-v1-5-startreview.asreview",
     )
 
-    proj2 = ASReviewProject.load(
-        open(asreview_v0_file, "rb"), asreview_path(), safe_import=True
+    proj2 = asr.Project.load(
+        open(asreview_v1_5_file, "rb"), asreview_path(), safe_import=True
     )
 
-    if with_upgrade:
-        # update these projects to a 1.x-ish config
-        upgrade_asreview_project_file(proj1.project_path)
-        upgrade_asreview_project_file(proj2.project_path)
     return proj1, proj2
 
 
@@ -313,7 +308,8 @@ def test_validity_function_invalid(capsys):
         auth_tool._ensure_valid_value_for("test", lambda x: x == correct, hint=hint)
     out, err = capsys.readouterr()
     assert not bool(out)
-    assert err == hint
+    # An new-line is added to the hint
+    assert err == f"{hint}\n"
 
 
 # Test printing a project
@@ -359,9 +355,7 @@ def test_print_user_without_affiliation(client_auth, capsys):
 
 
 # Testing _get_projects
-def test_get_projects(client_no_auth):
-    # create a project
-    _, data = au.create_project(client_no_auth, "test")
+def test_get_projects(client_no_auth, project):
     # get auth_tool object
     auth_tool = get_auth_tool_object(Namespace(json=None))
     # run function
@@ -369,12 +363,12 @@ def test_get_projects(client_no_auth):
     assert isinstance(result, list)
     assert len(result) == 1
     result = result[0]
-    assert result["folder"] == data["id"]
-    assert result["version"] == data["version"]
-    assert result["project_id"] == data["id"]
-    assert result["name"] == data["name"]
-    assert result["authors"] == data["authors"]
-    assert result["created"] == data["datetimeCreated"]
+    assert result["folder"] == project.config["id"]
+    assert result["version"] == project.config["version"]
+    assert result["project_id"] == project.config["id"]
+    assert result["name"] == project.config["name"]
+    assert result["authors"] == project.config["authors"]
+    assert result["created"] == project.config["datetimeCreated"]
     assert result["owner_id"] == 0
 
 
@@ -398,8 +392,8 @@ def test_list_users(client_auth, capsys):
 # Test list projects: no json data
 def test_list_projects_no_json(client_no_auth, capsys):
     # create two projects
-    _, data1 = au.create_project(client_no_auth, "test1")
-    _, data2 = au.create_project(client_no_auth, "test2")
+    r1 = au.create_project(client_no_auth, benchmark="synergy:van_der_Valk_2021")
+    r2 = au.create_project(client_no_auth, benchmark="synergy:van_der_Valk_2021")
     # get auth_tool object
     auth_tool = get_auth_tool_object(Namespace(json=None))
     # run function
@@ -407,21 +401,22 @@ def test_list_projects_no_json(client_no_auth, capsys):
     out, _ = capsys.readouterr()
     # we have already tested _print_project, so I will keep
     # it short
-    assert f"* {data1['id']}" in out
-    assert f"* {data2['id']}" in out
-    assert f"name: {data1['name']}" in out
-    assert f"name: {data2['name']}" in out
+
+    assert f"* {r1.json['id']}" in out
+    assert f"* {r2.json['id']}" in out
+    assert f"name: {r1.json['name']}" in out
+    assert f"name: {r2.json['name']}" in out
 
 
 # Test list projects: output is a json string
 def test_list_projects_with_json(client_no_auth, capsys):
-    # create two projects
-    _, data1 = au.create_project(client_no_auth, "test1")
-    _, data2 = au.create_project(client_no_auth, "test2")
-    data = {data1.get("id"): data1, data2.get("id"): data2}
-    # get auth_tool object
-    auth_tool = get_auth_tool_object(Namespace(json=True))
-    # run function
+    with capsys.disabled():
+        r1 = au.create_project(client_no_auth, benchmark="synergy:van_der_Valk_2021")
+        r2 = au.create_project(client_no_auth, benchmark="synergy:van_der_Valk_2021")
+        data = {r1.json.get("id"): r1.json, r2.json.get("id"): r2.json}
+        # get auth_tool object
+        auth_tool = get_auth_tool_object(Namespace(json=True))
+
     auth_tool.list_projects()
     out, _ = capsys.readouterr()
     # this loads the out json string into a list of dicts
@@ -446,18 +441,19 @@ def test_list_projects_with_json(client_no_auth, capsys):
 # asreview folder and upgraded. This is done without the help of
 # the API, ensuring they can't be linked to a User account.
 def test_link_project_with_json_string(client_auth, capsys):
-    # import projects
-    proj1, proj2 = import_2_unauthenticated_projects()
-    # create 2 users
-    user1 = crud.create_user(DB, 1)
-    user2 = crud.create_user(DB, 2)
-    # check database
-    assert crud.count_users() == 2
-    assert crud.count_projects() == 0
-    # check if we have 2 folders in asreview path
-    assert len(misc.get_folders_in_asreview_path()) == 2
-    # get from the auth tool a json string
-    auth_tool = get_auth_tool_object(Namespace(json=True))
+    with capsys.disabled():
+        import_2_unauthenticated_projects()
+        # create 2 users
+        user1 = crud.create_user(DB, 1)
+        user2 = crud.create_user(DB, 2)
+        # check database
+        assert crud.count_users() == 2
+        assert crud.count_projects() == 0
+        # check if we have 2 folders in asreview path
+        assert len(misc.get_folders_in_asreview_path()) == 2
+        # get from the auth tool a json string
+        auth_tool = get_auth_tool_object(Namespace(json=True))
+
     auth_tool.list_projects()
     out, _ = capsys.readouterr()
     # we replace the owner ids with the ids of the users
@@ -534,14 +530,15 @@ def test_link_projects_interactively_with_typo(client_auth):
 )
 def test_projects_with_0x_projects(client_auth, method):
     # import projects
-    proj1, proj2 = import_2_unauthenticated_projects(with_upgrade=False)
-    # make sure these projects exist
-    assert len(misc.get_folders_in_asreview_path()) == 2
-    # create AuthTool object
-    auth_tool = get_auth_tool_object(Namespace(json=None))
-    # try to link project to user
-    with pytest.raises(RuntimeError) as error:
-        func = getattr(auth_tool, method)
-        func()
-        assert "Version of project with id" in str(error.value)
-        assert "too old" in str(error.value)
+    tests_folder = Path(__file__).parent.parent
+    asreview_v0_18_file = Path(
+        tests_folder,
+        "asreview-project-file-archive",
+        "v0.18",
+        "asreview-project-v0-18-startreview.asreview",
+    )
+
+    with pytest.raises(ValueError):
+        asr.Project.load(
+            open(asreview_v0_18_file, "rb"), asreview_path(), safe_import=True
+        )

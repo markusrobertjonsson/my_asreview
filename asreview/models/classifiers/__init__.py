@@ -14,30 +14,18 @@
 
 __all__ = [
     "LogisticClassifier",
-    "LSTMBaseClassifier",
-    "LSTMPoolClassifier",
     "NaiveBayesClassifier",
-    "NN2LayerClassifier",
     "RandomForestClassifier",
     "SVMClassifier",
-    "get_classifier",
-    "get_classifier_class",
-    "list_classifiers",
 ]
 
 from asreview.models.classifiers.logistic import LogisticClassifier
-from asreview.models.classifiers.lstm_base import LSTMBaseClassifier
-from asreview.models.classifiers.lstm_pool import LSTMPoolClassifier
 from asreview.models.classifiers.nb import NaiveBayesClassifier
-from asreview.models.classifiers.nn_2_layer import NN2LayerClassifier
 from asreview.models.classifiers.rf import RandomForestClassifier
 from asreview.models.classifiers.svm import SVMClassifier
-from asreview.models.classifiers.utils import get_classifier
-from asreview.models.classifiers.utils import get_classifier_class
-from asreview.models.classifiers.utils import list_classifiers
 
 """Machine learning classifiers to classify the documents.
 
 There are several machine learning classifiers available. In configuration
-files, parameters are found under the section ``[model_param]``.
+files, parameters are found under the section ``[classifier_param]``.
 """

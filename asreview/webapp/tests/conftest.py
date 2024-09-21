@@ -18,19 +18,21 @@ from pathlib import Path
 import pytest
 from sqlalchemy.orm import close_all_sessions
 
+import asreview.webapp.tests.utils.api_utils as au
 from asreview.webapp import DB
 from asreview.webapp.app import create_app
 from asreview.webapp.tests.utils import crud
+from asreview.webapp.utils import get_projects
 
 PROJECTS = [
     {
-        "mode": "explore",
+        "mode": "oracle",
         "name": "demo project",
         "authors": "asreview team",
         "description": "hello world",
     },
     {
-        "mode": "explore",
+        "mode": "oracle",
         "name": "another demo project",
         "authors": "asreview team",
         "description": "hello world",
@@ -55,7 +57,8 @@ def _get_app(app_type="auth-basic", path=None):
     else:
         raise ValueError(f"Unknown config {app_type}")
     # create app
-    app = create_app(env="test", config_file=config_path)
+    app = create_app(config_path=config_path)
+    app.config["TESTING"] = True
     # and return it
     return app
 
@@ -67,7 +70,7 @@ def asreview_path_fixture(tmp_path_factory):
     # create an ASReview folder
     asreview_path = tmp_path_factory.mktemp("asreview-test")
     assert Path(asreview_path).exists()
-    assert len(list(Path(asreview_path).glob('*'))) == 0
+    assert len(list(Path(asreview_path).glob("*"))) == 0
     yield str(asreview_path.absolute())
     # Pytest handles removal of ASReview folder
 
@@ -137,3 +140,56 @@ def client_no_auth(asreview_path_fixture):
     # make sure we have the asreview_path
     with app.app_context():
         yield app.test_client()
+
+
+@pytest.fixture(
+    params=[
+        "client_auth",
+        "client_no_auth",
+    ]
+)
+def client(request):
+    """This fixture provides different Flask client (authenticated
+    and unauthenticated) for every test that uses it."""
+    client = request.getfixturevalue(request.param)
+    yield client
+    if request.param == "client_auth":
+        # cleanup database and asreview_path
+        crud.delete_everything(DB)
+
+
+@pytest.fixture()
+def user(client):
+    if client.application.config["LOGIN_DISABLED"]:
+        user = None
+    else:
+        user = au.create_and_signin_user(client, 1)
+
+    yield user
+    if not client.application.config["LOGIN_DISABLED"]:
+        crud.delete_everything(DB)
+
+
+@pytest.fixture()
+def project(request):
+    client = None
+    for name in request.fixturenames:
+        if name.startswith("client"):
+            client = request.getfixturevalue(name)
+            break
+
+    if client is None:
+        raise ValueError("No client found in fixturenames")
+
+    if "user" in request.fixturenames:
+        user = request.getfixturevalue("user")
+    elif not client.application.config["LOGIN_DISABLED"]:
+        user = au.create_and_signin_user(client, 1)
+    else:
+        user = None
+
+    au.create_project(client, benchmark="synergy:van_der_Valk_2021")
+    yield user.projects[0] if user is not None else get_projects()[0]
+
+    if not client.application.config["LOGIN_DISABLED"]:
+        crud.delete_everything(DB)

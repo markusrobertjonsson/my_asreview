@@ -5,7 +5,7 @@ from flask_login import login_required
 from sqlalchemy import and_
 from sqlalchemy.exc import SQLAlchemyError
 
-from asreview.project import ASReviewProject
+import asreview as asr
 from asreview.webapp import DB
 from asreview.webapp.authentication.models import Project
 from asreview.webapp.authentication.models import User
@@ -30,7 +30,7 @@ def users(project_id):
         collaborators = project.collaborators
         invitations = project.pending_invitations
 
-        # get all users that are involved (invited or collabo)
+        # get all users that are involved (invited or collaborators)
         collaborators = [user.id for user in collaborators]
         invitations = [user.id for user in invitations]
 
@@ -75,16 +75,10 @@ def end_collaboration(project_id, user_id):
         try:
             project.collaborators.remove(user)
             DB.session.commit()
-            response = (
-                jsonify({"message": "Collaborator removed from project."}),
-                200
-            )
+            response = (jsonify({"message": "Collaborator removed from project."}), 200)
 
         except SQLAlchemyError:
-            response = (
-                jsonify({"message": "Error removing collaborator."}),
-                404
-            )
+            response = (jsonify({"message": "Error removing collaborator."}), 404)
     return response
 
 
@@ -97,7 +91,7 @@ def pending_invitations():
         # get path of project
         path = p.project_path
         # get object to get name
-        asreview_object = ASReviewProject(path)
+        asreview_object = asr.Project(path)
         # append info
         invitations.append(
             {
@@ -126,10 +120,7 @@ def invite(project_id, user_id):
         project.pending_invitations.append(user)
         try:
             DB.session.commit()
-            response = (
-                jsonify({"message": f'User "{user.identifier}" invited.'}),
-                200
-            )
+            response = (jsonify({"message": f'User "{user.identifier}" invited.'}), 200)
         except SQLAlchemyError:
             response = (
                 jsonify({"message": f'User "{user.identifier}" not invited.'}),
@@ -155,13 +146,10 @@ def accept_invitation(project_id):
             DB.session.commit()
             response = (
                 jsonify({"message": "User accepted invitation for project."}),
-                200
+                200,
             )
         except SQLAlchemyError:
-            response = (
-                jsonify({"message": "Error accepting invitation."}),
-                404
-            )
+            response = (jsonify({"message": "Error accepting invitation."}), 404)
     return response
 
 
@@ -180,13 +168,10 @@ def reject_invitation(project_id):
             DB.session.commit()
             response = (
                 jsonify({"message": "User rejected invitation for project."}),
-                200
+                200,
             )
         except SQLAlchemyError:
-            response = (
-                jsonify({"message": "Error rejecting invitation."}),
-                404
-            )
+            response = (jsonify({"message": "Error rejecting invitation."}), 404)
     return response
 
 

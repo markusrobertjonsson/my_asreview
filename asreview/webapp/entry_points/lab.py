@@ -15,38 +15,25 @@ import argparse
 import logging
 import os
 import socket
-import time
 import webbrowser
+from pathlib import Path
 from threading import Timer
 
 import requests
-from gevent.pywsgi import WSGIServer
+import waitress
+from rich.console import Console
 
-from asreview import __version__
+import asreview as asr
 from asreview._deprecated import DeprecateAction
 from asreview._deprecated import mark_deprecated_help_strings
-from asreview.project import ASReviewProject
-from asreview.project import get_project_path
-from asreview.project import get_projects
 from asreview.webapp.app import create_app
+from asreview.webapp.utils import asreview_path
+from asreview.webapp.utils import get_project_path
+from asreview.webapp.utils import get_projects
 
 # Host name
-HOST_NAME = os.getenv("ASREVIEW_HOST")
-if HOST_NAME is None:
-    HOST_NAME = "localhost"
-
-PORT_NUMBER = 5000
-
-
-def _deprecated_dev_mode():
-    if os.environ.get("FLASK_DEBUG", "") == "1":
-        print(
-            "\n\n\n!IMPORTANT!\n\n"
-            "asreview lab development mode is deprecated, see:\n"
-            "https://github.com/J535D165/asreview/blob/master/DEVELOPMENT.md"
-            "\n\n\n"
-        )
-        exit(1)
+HOST_NAME = os.getenv("ASREVIEW_LAB_HOST", "localhost")
+PORT_NUMBER = os.getenv("ASREVIEW_LAB_PORT", 5000)
 
 
 def _check_port_in_use(host, port):
@@ -59,8 +46,6 @@ def _check_port_in_use(host, port):
 def _open_browser(start_url):
     Timer(1, lambda: webbrowser.open_new(start_url)).start()
 
-    print("\n\n\n\nIf your browser doesn't open. " f"Navigate to {start_url}\n\n\n\n")
-
 
 def _check_for_update():
     """Check if there is an update available."""
@@ -69,23 +54,33 @@ def _check_for_update():
         r = requests.get("https://pypi.org/pypi/asreview/json")
         r.raise_for_status()
         latest_version = r.json()["info"]["version"]
-        if latest_version != __version__ and "+" not in __version__:
-            print(
-                "\n\n\n"
-                f"ASReview LAB version {latest_version} is available. "
-                "Please update using:\n"
-                "pip install --upgrade asreview"
-                "\n\n\n"
-            )
+        if latest_version != asr.__version__ and "+" not in asr.__version__:
+            return True, latest_version
 
-            time.sleep(5)
+        return False, latest_version
     except Exception:
-        print("Could not check for updates.")
+        pass
 
 
 def lab_entry_point(argv):
-    # check deprecated dev mode
-    _deprecated_dev_mode()
+    """Entry point for the ASReview LAB webapp.
+
+    This function is called when the `asreview lab` command is used.
+
+    Arguments
+    ---------
+    argv: list
+        Command line arguments.
+
+    Examples
+    --------
+    >>> lab_entry_point(["--port", "5000"])
+    Serving ASReview LAB at http://localhost:5000/
+
+    Two examples of how to set the secret key for secure sessions:
+    >>> ASREVIEW_LAB_SECRET_KEY="my-secret" asreview lab
+    >>> asreview lab --secret-key "my-secret"
+    """
 
     parser = _lab_parser()
     mark_deprecated_help_strings(parser)
@@ -95,14 +90,19 @@ def lab_entry_point(argv):
     if not args.skip_update_check:
         _check_for_update()
 
-    app = create_app(
-        env="production",
-        config_file=args.flask_config_file,
-        secret_key=args.secret_key,
-        salt=args.salt,
-        enable_authentication=args.enable_authentication,
+    app = create_app(config_path=args.config_path)
+
+    # override config with command line arguments
+    if args.secret_key:
+        app.config["SECRET_KEY"] = args.secret_key
+
+    if args.salt:
+        app.config["SALT"] = args.salt
+
+    # by default, the application is authenticated but lab is not
+    app.config["LOGIN_DISABLED"] = (
+        app.config.get("LOGIN_DISABLED", True) and args.login_disabled is not False
     )
-    app.config["PROPAGATE_EXCEPTIONS"] = False
 
     # clean all projects
     # TODO@{Casper}: this needs a little bit
@@ -120,7 +120,7 @@ def lab_entry_point(argv):
     # option
     if args.clean_project is not None:
         print(f"Cleaning project file '{args.clean_project}'.")
-        ASReviewProject(get_project_path(args.clean_project)).clean_tmp_files()
+        asr.Project(get_project_path(args.clean_project)).clean_tmp_files()
         print("Done")
         return
 
@@ -128,7 +128,6 @@ def lab_entry_point(argv):
     port = args.port
     original_port = port
     while _check_port_in_use(args.host, port) is True:
-        old_port = port
         port = int(port) + 1
         if port - original_port >= args.port_retries:
             raise ConnectionError(
@@ -136,39 +135,65 @@ def lab_entry_point(argv):
                 "to launch ASReview LAB. Last port \n"
                 f"was {str(port)}"
             )
-        print(f"Port {old_port} is in use.\n* Trying to start at {port}")
 
     protocol = "https://" if args.certfile and args.keyfile else "http://"
     start_url = f"{protocol}{args.host}:{port}/"
 
-    ssl_args = {}
-    if args.keyfile and args.certfile:
-        ssl_args = {"keyfile": args.keyfile, "certfile": args.certfile}
+    console = Console()
+    console.print("\n\nASReview LAB is starting up [red]<3[/red]\n\n")
+    console.print("[bold]Information about your application[/bold]\n")
 
-    server = WSGIServer((args.host, port), app, **ssl_args)
-    print(f"Serving ASReview LAB at {start_url}")
+    host_str = f"[bold]URL:[/bold] {start_url}"
+    if original_port != port:
+        host_str += f" [yellow][Port {original_port} was already in use][/yellow]"
 
+    version_str = f"[bold]Version:[/bold] {asr.__version__}"
+    update_available = False
+    if not args.skip_update_check:
+        update_available, latest_version = _check_for_update()
+        if not update_available:
+            version_str += (
+                " [red][Update available"
+                f": {asr.__version__} -> {latest_version}][/red]"
+            )
+
+    console.print(host_str)
+    console.print(version_str, highlight=False)
+    console.print(f"[bold]Local projects folder:[/bold] {asreview_path()}")
+
+    if update_available:
+        console.print(
+            "\n\n[bold]Update for ASReview LAB is available![/bold]\n"
+            "Run `pip install --upgrade asreview` to update."
+        )
+
+    console.print(
+        "\n\nMake regular backups of the ASReview"
+        " projects folder to prevent data loss."
+    )
     if not args.no_browser:
         _open_browser(start_url)
+        console.print(f"\nIf your browser doesn't open, navigate to {start_url}.\n\n\n")
+
+    console.print("Press [bold]Ctrl+C[/bold] to exit.\n\n")
 
     try:
-        server.serve_forever()
+        waitress.serve(app, host=args.host, port=port, threads=6)
     except KeyboardInterrupt:
-        print("\n\nShutting down server\n\n")
+        console.print("\n\nShutting down server\n\n")
 
 
 def _lab_parser():
     # parse arguments if available
     parser = argparse.ArgumentParser(
         prog="lab",
-        description="""ASReview LAB - Active learning for Systematic Reviews.""",  # noqa
+        description="ASReview LAB - Active learning for Systematic Reviews.",
         formatter_class=argparse.RawTextHelpFormatter,
     )
 
     parser.add_argument(
         "--clean-project",
         dest="clean_project",
-        default=None,
         type=str,
         help="Safe cleanup of temporary files in project.",
     )
@@ -176,7 +201,6 @@ def _lab_parser():
     parser.add_argument(
         "--clean-all-projects",
         dest="clean_all_projects",
-        default=None,
         action="store_true",
         help="Safe cleanup of temporary files in all projects.",
     )
@@ -205,31 +229,29 @@ def _lab_parser():
 
     parser.add_argument(
         "--enable-auth",
-        dest="enable_authentication",
-        action="store_true",
+        dest="login_disabled",
+        default=None,
+        action="store_false",
         help="Enable authentication.",
     )
 
     parser.add_argument(
         "--secret-key",
-        default=None,
         type=str,
         help="Secret key for authentication.",
     )
 
     parser.add_argument(
         "--salt",
-        default=None,
         type=str,
         help="When using authentication, a salt code is needed for hasing passwords.",
     )
 
     parser.add_argument(
+        "--config-path",
         "--flask-configfile",
-        dest="flask_config_file",
-        type=str,
-        help="Full path to a TOML file containing Flask parameters"
-        "for authentication.",
+        type=Path,
+        help="Path to a TOML file containing ASReview parameters" "for authentication.",
     )
 
     parser.add_argument(
@@ -252,14 +274,18 @@ def _lab_parser():
         "--certfile",
         default="",
         type=str,
-        help="The full path to an SSL/TLS certificate file.",
+        help="The full path to an SSL/TLS certificate file. "
+        "Use dedicated WSGI server (e.g. gUnicorn) instead to make use of TLS. "
+        "See https://flask.palletsprojects.com/en/3.0.x/deploying/",
     )
 
     parser.add_argument(
         "--keyfile",
         default="",
         type=str,
-        help="The full path to a private key file for usage with SSL/TLS.",
+        help="The full path to a private key file for usage with SSL/TLS. "
+        "Use dedicated WSGI server (e.g. gUnicorn) instead to make use of TLS. "
+        "See https://flask.palletsprojects.com/en/3.0.x/deploying/",
     )
 
     parser.add_argument(
