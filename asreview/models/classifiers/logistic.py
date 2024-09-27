@@ -45,7 +45,7 @@ class LogisticClassifier(BaseTrainClassifier):
     label = "Logistic regression"
 
     def __init__(self, C=1.0, class_weight=1.0, random_state=None, n_jobs=1):
-        super().__init__()
+        super(LogisticClassifier, self).__init__()
         self.C = C
         self.class_weight = class_weight
         self.n_jobs = n_jobs
@@ -58,3 +58,13 @@ class LogisticClassifier(BaseTrainClassifier):
             random_state=random_state,
         )
         logging.debug(self._model)
+
+    def full_hyper_space(self):
+        from hyperopt import hp
+
+        hyper_choices = {}
+        hyper_space = {
+            "mdl_C": hp.lognormal("mdl_C", 0, 1),
+            "mdl_class_weight": hp.lognormal("mdl_class_weight", 0, 1),
+        }
+        return hyper_space, hyper_choices

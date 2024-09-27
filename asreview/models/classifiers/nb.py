@@ -43,7 +43,16 @@ class NaiveBayesClassifier(BaseTrainClassifier):
     label = "Naive Bayes"
 
     def __init__(self, alpha=3.822):
-        super().__init__()
+        super(NaiveBayesClassifier, self).__init__()
         self.alpha = alpha
         self._model = MultinomialNB(alpha=alpha)
         logging.debug(self._model)
+
+    def full_hyper_space(self):
+        from hyperopt import hp
+
+        hyper_choices = {}
+        hyper_space = {
+            "mdl_alpha": hp.lognormal("mdl_alpha", 0, 1),
+        }
+        return hyper_space, hyper_choices

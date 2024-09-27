@@ -15,16 +15,17 @@ import argparse
 import logging
 import os
 import socket
+import time
 import webbrowser
 from threading import Timer
 
 import requests
 from gevent.pywsgi import WSGIServer
-from rich.console import Console
 
-import asreview as asr
+from asreview import __version__
 from asreview._deprecated import DeprecateAction
 from asreview._deprecated import mark_deprecated_help_strings
+from asreview.project import ASReviewProject
 from asreview.project import get_project_path
 from asreview.project import get_projects
 from asreview.webapp.app import create_app
@@ -37,6 +38,17 @@ if HOST_NAME is None:
 PORT_NUMBER = 5000
 
 
+def _deprecated_dev_mode():
+    if os.environ.get("FLASK_DEBUG", "") == "1":
+        print(
+            "\n\n\n!IMPORTANT!\n\n"
+            "asreview lab development mode is deprecated, see:\n"
+            "https://github.com/J535D165/asreview/blob/master/DEVELOPMENT.md"
+            "\n\n\n"
+        )
+        exit(1)
+
+
 def _check_port_in_use(host, port):
     logging.info(f"Checking if host and port are available :: {host}:{port}")
     host = host.replace("https://", "").replace("http://", "")
@@ -47,6 +59,8 @@ def _check_port_in_use(host, port):
 def _open_browser(start_url):
     Timer(1, lambda: webbrowser.open_new(start_url)).start()
 
+    print("\n\n\n\nIf your browser doesn't open. " f"Navigate to {start_url}\n\n\n\n")
+
 
 def _check_for_update():
     """Check if there is an update available."""
@@ -55,18 +69,31 @@ def _check_for_update():
         r = requests.get("https://pypi.org/pypi/asreview/json")
         r.raise_for_status()
         latest_version = r.json()["info"]["version"]
-        if latest_version != asr.__version__ and "+" not in asr.__version__:
-            return True, latest_version
+        if latest_version != __version__ and "+" not in __version__:
+            print(
+                "\n\n\n"
+                f"ASReview LAB version {latest_version} is available. "
+                "Please update using:\n"
+                "pip install --upgrade asreview"
+                "\n\n\n"
+            )
 
-        return False, latest_version
+            time.sleep(5)
     except Exception:
-        pass
+        print("Could not check for updates.")
 
 
 def lab_entry_point(argv):
+    # check deprecated dev mode
+    _deprecated_dev_mode()
+
     parser = _lab_parser()
     mark_deprecated_help_strings(parser)
     args = parser.parse_args(argv)
+
+    # check for update
+    if not args.skip_update_check:
+        _check_for_update()
 
     app = create_app(
         env="production",
@@ -93,7 +120,7 @@ def lab_entry_point(argv):
     # option
     if args.clean_project is not None:
         print(f"Cleaning project file '{args.clean_project}'.")
-        asr.Project(get_project_path(args.clean_project)).clean_tmp_files()
+        ASReviewProject(get_project_path(args.clean_project)).clean_tmp_files()
         print("Done")
         return
 
@@ -101,6 +128,7 @@ def lab_entry_point(argv):
     port = args.port
     original_port = port
     while _check_port_in_use(args.host, port) is True:
+        old_port = port
         port = int(port) + 1
         if port - original_port >= args.port_retries:
             raise ConnectionError(
@@ -108,6 +136,7 @@ def lab_entry_point(argv):
                 "to launch ASReview LAB. Last port \n"
                 f"was {str(port)}"
             )
+        print(f"Port {old_port} is in use.\n* Trying to start at {port}")
 
     protocol = "https://" if args.certfile and args.keyfile else "http://"
     start_url = f"{protocol}{args.host}:{port}/"
@@ -117,50 +146,15 @@ def lab_entry_point(argv):
         ssl_args = {"keyfile": args.keyfile, "certfile": args.certfile}
 
     server = WSGIServer((args.host, port), app, **ssl_args)
+    print(f"Serving ASReview LAB at {start_url}")
 
-    console = Console()
-
-    console.print("\n\nASReview LAB is starting up [red]<3[/red]\n\n")
-    console.print("[bold]Information about your application[/bold]\n")
-
-    host_str = f"[bold]URL:[/bold] {start_url}"
-    if original_port != port:
-        host_str += f" [yellow][Port {original_port} was already in use][/yellow]"
-
-    version_str = f"[bold]Version:[/bold] {asr.__version__}"
-    update_available = False
-    if not args.skip_update_check:
-        update_available, latest_version = _check_for_update()
-        if not update_available:
-            version_str += (
-                " [red][Update available"
-                f": {asr.__version__} -> {latest_version}][/red]"
-            )
-
-    console.print(host_str)
-    console.print(version_str, highlight=False)
-    console.print(f"[bold]Local projects folder:[/bold] {asr.asreview_path()}")
-
-    if update_available:
-        console.print(
-            "\n\n[bold]Update for ASReview LAB is available![/bold]\n"
-            "Run `pip install --upgrade asreview` to update."
-        )
-
-    console.print(
-        "\n\nMake regular backups of the ASReview"
-        " projects folder to prevent data loss."
-    )
     if not args.no_browser:
         _open_browser(start_url)
-        console.print(f"\nIf your browser doesn't open, navigate to {start_url}.\n\n\n")
-
-    console.print("Press [bold]Ctrl+C[/bold] to exit.\n\n")
 
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        console.print("\n\nShutting down server\n\n")
+        print("\n\nShutting down server\n\n")
 
 
 def _lab_parser():

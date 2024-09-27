@@ -4,13 +4,20 @@ from typing import Union
 
 from flask.testing import FlaskClient
 
-import asreview as asr
 import asreview.webapp.tests.utils.crud as crud
 import asreview.webapp.tests.utils.misc as misc
+from asreview.project import ASReviewProject
 from asreview.webapp.authentication.models import Project
 from asreview.webapp.tests.utils.config_parser import all_users
 from asreview.webapp.tests.utils.config_parser import get_user
 from asreview.webapp.tests.utils.misc import get_project_id
+
+
+def process_response(response):
+    """Breaks response in a tuple containing the status code
+    and json data."""
+    return (response.status_code, response.json)
+
 
 # ########################
 # General API calls
@@ -19,12 +26,13 @@ from asreview.webapp.tests.utils.misc import get_project_id
 
 def call_root_url(client):
     response = client.get("/")
-    return response
+    status_code, data = process_response(response)
+    return (status_code, data, response.text)
 
 
 def call_boot_url(client):
     response = client.get("/boot")
-    return response
+    return process_response(response)
 
 
 # ########################
@@ -42,7 +50,7 @@ def signin_user(client, user):
     response = client.post(
         "/auth/signin", data={"email": user.identifier, "password": user.password}
     )
-    return response
+    return process_response(response)
 
 
 def signup_user(client, user):
@@ -58,25 +66,25 @@ def signup_user(client, user):
             "origin": "asreview",
         },
     )
-    return response
+    return process_response(response)
 
 
 def signout_user(client):
     """Sign out user"""
     response = client.delete("/auth/signout")
-    return response
+    return process_response(response)
 
 
 def confirm_user(client, user):
     response = client.post(
         "/auth/confirm_account", data={"user_id": user.id, "token": user.token}
     )
-    return response
+    return process_response(response)
 
 
 def forgot_password(client, user):
     response = client.post("/auth/forgot_password", data={"email": user.email})
-    return response
+    return process_response(response)
 
 
 def reset_password(client, user):
@@ -84,22 +92,22 @@ def reset_password(client, user):
         "/auth/reset_password",
         data={"password": user.password, "token": user.token, "user_id": user.id},
     )
-    return response
+    return process_response(response)
 
 
 def update_user(client, data):
     response = client.post("/auth/update_profile", data=data)
-    return response
+    return process_response(response)
 
 
 def refresh(client):
     response = client.get("/auth/refresh")
-    return response
+    return process_response(response)
 
 
 def get_profile(client: FlaskClient):
     response = client.get("/auth/get_profile")
-    return response
+    return process_response(response)
 
 
 # ########################
@@ -110,45 +118,45 @@ def get_profile(client: FlaskClient):
 def invite(client, project, user):
     url = f"/api/invitations/projects/{get_project_id(project)}/users/{user.id}"
     response = client.post(url)
-    return response
+    return process_response(response)
 
 
 def list_invitations(client):
     response = client.get("/api/invitations")
-    return response
+    return process_response(response)
 
 
 def list_collaborators(client, project):
     response = client.get(f"/api/projects/{get_project_id(project)}/users")
-    return response
+    return process_response(response)
 
 
 def accept_invitation(client, project):
     response = client.post(
         f"/api/invitations/projects/{get_project_id(project)}/accept", data={}
     )
-    return response
+    return process_response(response)
 
 
 def reject_invitation(client, project):
     response = client.delete(
         f"/api/invitations/projects/{get_project_id(project)}/reject", data={}
     )
-    return response
+    return process_response(response)
 
 
 def delete_invitation(client, project, user):
     response = client.delete(
         f"/api/invitations/projects/{get_project_id(project)}/users/{user.id}", data={}
     )
-    return response
+    return process_response(response)
 
 
 def delete_collaboration(client, project, user):
     response = client.delete(
         f"/api/projects/{get_project_id(project)}/users/{user.id}", data={}
     )
-    return response
+    return process_response(response)
 
 
 # ########################
@@ -158,20 +166,26 @@ def delete_collaboration(client, project, user):
 
 def get_all_projects(client: FlaskClient):
     response = client.get("/api/projects")
-    return response
+    return process_response(response)
 
 
 def create_project(
     client: FlaskClient,
+    project_name: str,
     mode: str = "explore",
+    authors: str = "authors",
+    description: str = "description",
 ):
     response = client.post(
         "/api/projects/info",
         data={
             "mode": mode,
+            "name": project_name,
+            "authors": authors,
+            "description": description,
         },
     )
-    return response
+    return process_response(response)
 
 
 def create_project_from_dict(client: FlaskClient, data: dict):
@@ -179,17 +193,16 @@ def create_project_from_dict(client: FlaskClient, data: dict):
         "/api/projects/info",
         data=data,
     )
-    return response
+    return process_response(response)
 
 
 def update_project(
     client: FlaskClient,
-    project: Union[Project, asr.Project],
+    project: Union[Project, ASReviewProject],
     name: str = "name",
     mode: str = "explore",
     authors: str = "authors",
     description: str = "description",
-    tags: str = "[]",
 ):
     response = client.put(
         f"/api/projects/{get_project_id(project)}/info",
@@ -198,15 +211,14 @@ def update_project(
             "name": name,
             "authors": authors,
             "description": description,
-            "tags": tags,
         },
     )
-    return response
+    return process_response(response)
 
 
-def upgrade_project(client: FlaskClient, project: Union[Project, asr.Project]):
+def upgrade_project(client: FlaskClient, project: Union[Project, ASReviewProject]):
     response = client.get(f"/api/projects/{get_project_id(project)}/upgrade_if_old")
-    return response
+    return process_response(response)
 
 
 def import_project(client: FlaskClient, asreview_file):
@@ -214,201 +226,206 @@ def import_project(client: FlaskClient, asreview_file):
         "/api/projects/import_project",
         data={"file": (open(asreview_file, "rb"), "project.asreview")},
     )
-    return response
+    return process_response(response)
 
 
 def get_project_stats(client: FlaskClient):
     response = client.get("/api/projects/stats")
-    return response
+    return process_response(response)
 
 
 def get_demo_data(client: FlaskClient, subset: str):
     response = client.get(f"/api/datasets?subset={subset}")
-    return response
+    return process_response(response)
 
 
 def upload_data_to_project(
-    client: FlaskClient, project: Union[Project, asr.Project], data: dict
+    client: FlaskClient, project: Union[Project, ASReviewProject], data: dict
 ):
     response = client.post(
         f"/api/projects/{get_project_id(project)}/data",
         data=data,
     )
-    return response
+    return process_response(response)
 
 
-def get_project_data(client: FlaskClient, project: Union[Project, asr.Project]):
+def get_project_data(client: FlaskClient, project: Union[Project, ASReviewProject]):
     response = client.get(f"/api/projects/{get_project_id(project)}/data")
-    return response
+    return process_response(response)
 
 
 def get_project_dataset_writer(
-    client: FlaskClient, project: Union[Project, asr.Project]
+    client: FlaskClient, project: Union[Project, ASReviewProject]
 ):
     response = client.get(f"/api/projects/{get_project_id(project)}/dataset_writer")
-    return response
+    return process_response(response)
 
 
 def search_project_data(
-    client: FlaskClient, project: Union[Project, asr.Project], query: str
+    client: FlaskClient, project: Union[Project, ASReviewProject], query: str
 ):
     response = client.get(f"/api/projects/{get_project_id(project)}/search?q={query}")
-    return response
+    return process_response(response)
 
 
 def get_prior_random_project_data(
-    client: FlaskClient, project: Union[Project, asr.Project]
+    client: FlaskClient, project: Union[Project, ASReviewProject]
 ):
     response = client.get(f"/api/projects/{get_project_id(project)}/prior_random")
-    return response
+    return process_response(response)
 
 
 def label_random_project_data_record(
-    client: FlaskClient, project: Union[Project, asr.Project], label: int
+    client: FlaskClient, project: Union[Project, ASReviewProject], label: int
 ):
     # get random data
-    r = get_prior_random_project_data(client, project)
+    _, data = get_prior_random_project_data(client, project)
     # select a specific record
-    record = random.choice(r.json["result"])
-    record_id = record["record_id"]
-    return label_project_record(client, project, record_id, label, note="")
+    record = random.choice(data["result"])
+    doc_id = record["id"]
+    return label_project_record(client, project, doc_id, label, note="")
 
 
 def label_project_record(
     client: FlaskClient,
-    project: Union[Project, asr.Project],
-    record_id: int,
+    project: Union[Project, ASReviewProject],
+    doc_id: int,
     label: str,
     prior: int = 1,
     note: str = "",
 ):
     response = client.post(
-        f"/api/projects/{get_project_id(project)}/record/{record_id}",
-        data={"record_id": record_id, "label": label, "is_prior": prior, "note": note},
+        f"/api/projects/{get_project_id(project)}/record/{doc_id}",
+        data={"doc_id": doc_id, "label": label, "is_prior": prior, "note": note},
     )
-    return response
+    return process_response(response)
 
 
 def update_label_project_record(
     client: FlaskClient,
-    project: Union[Project, asr.Project],
-    record_id: int,
+    project: Union[Project, ASReviewProject],
+    doc_id: int,
     label: str,
     prior: int = 1,
     note: str = "",
 ):
     response = client.put(
-        f"/api/projects/{get_project_id(project)}/record/{record_id}",
-        data={"record_id": record_id, "label": label, "is_prior": prior, "note": note},
+        f"/api/projects/{get_project_id(project)}/record/{doc_id}",
+        data={"doc_id": doc_id, "label": label, "is_prior": prior, "note": note},
     )
-    return response
+    return process_response(response)
 
 
-def get_labeled_project_data(client: FlaskClient, project: Union[Project, asr.Project]):
+def get_labeled_project_data(
+    client: FlaskClient, project: Union[Project, ASReviewProject]
+):
     response = client.get(f"/api/projects/{get_project_id(project)}/labeled")
-    return response
+    return process_response(response)
 
 
 def get_labeled_project_data_stats(
-    client: FlaskClient, project: Union[Project, asr.Project]
+    client: FlaskClient, project: Union[Project, ASReviewProject]
 ):
     response = client.get(f"/api/projects/{get_project_id(project)}/labeled_stats")
-    return response
+    return process_response(response)
 
 
 def get_project_algorithms_options(client: FlaskClient):
     response = client.get("/api/algorithms")
-    return response
+    return process_response(response)
 
 
 def set_project_algorithms(
-    client: FlaskClient, project: Union[Project, asr.Project], data: dict
+    client: FlaskClient, project: Union[Project, ASReviewProject], data: dict
 ):
     response = client.post(
         f"/api/projects/{get_project_id(project)}/algorithms", data=data
     )
-    return response
+    return process_response(response)
 
 
-def get_project_algorithms(client: FlaskClient, project: Union[Project, asr.Project]):
+def get_project_algorithms(
+    client: FlaskClient, project: Union[Project, ASReviewProject]
+):
     response = client.get(f"/api/projects/{get_project_id(project)}/algorithms")
-    return response
+    return process_response(response)
 
 
-def start_project_algorithms(client: FlaskClient, project: Union[Project, asr.Project]):
+def start_project_algorithms(
+    client: FlaskClient, project: Union[Project, ASReviewProject]
+):
     response = client.post(f"/api/projects/{get_project_id(project)}/start")
-    return response
+    return process_response(response)
 
 
-def get_project_status(client: FlaskClient, project: Union[Project, asr.Project]):
+def get_project_status(client: FlaskClient, project: Union[Project, ASReviewProject]):
     response = client.get(f"/api/projects/{get_project_id(project)}/status")
-    return response
+    return process_response(response)
 
 
 def set_project_status(
-    client: FlaskClient, project: Union[Project, asr.Project], status: str
+    client: FlaskClient, project: Union[Project, ASReviewProject], status: str
 ):
     response = client.put(
         f"/api/projects/{get_project_id(project)}/status", data={"status": status}
     )
-    return response
+    return process_response(response)
 
 
 def export_project_dataset(
-    client: FlaskClient, project: Union[Project, asr.Project], format: str
+    client: FlaskClient, project: Union[Project, ASReviewProject], format: str
 ):
     id = get_project_id(project)
     response = client.get(f"/api/projects/{id}/export_dataset?file_format={format}")
-    return response
+    return process_response(response)
 
 
 def export_project(
     client: FlaskClient,
-    project: Union[Project, asr.Project],
+    project: Union[Project, ASReviewProject],
 ):
     response = client.get(f"/api/projects/{get_project_id(project)}/export_project")
-
-    return response
+    return process_response(response)
 
 
 def get_project_progress(
     client: FlaskClient,
-    project: Union[Project, asr.Project],
+    project: Union[Project, ASReviewProject],
 ):
     response = client.get(f"/api/projects/{get_project_id(project)}/progress")
-    return response
+    return process_response(response)
 
 
 def get_project_progress_density(
     client: FlaskClient,
-    project: Union[Project, asr.Project],
+    project: Union[Project, ASReviewProject],
 ):
     response = client.get(f"/api/projects/{get_project_id(project)}/progress_density")
-    return response
+    return process_response(response)
 
 
 def get_project_progress_recall(
     client: FlaskClient,
-    project: Union[Project, asr.Project],
+    project: Union[Project, ASReviewProject],
 ):
     response = client.get(f"/api/projects/{get_project_id(project)}/progress_recall")
-    return response
+    return process_response(response)
 
 
 def get_project_current_document(
     client: FlaskClient,
-    project: Union[Project, asr.Project],
+    project: Union[Project, ASReviewProject],
 ):
     response = client.get(f"/api/projects/{get_project_id(project)}/get_document")
-    return response
+    return process_response(response)
 
 
 def delete_project(
     client: FlaskClient,
-    project: Union[Project, asr.Project],
+    project: Union[Project, ASReviewProject],
 ):
     response = client.delete(f"/api/projects/{get_project_id(project)}/delete")
-    return response
+    return process_response(response)
 
 
 # ########################

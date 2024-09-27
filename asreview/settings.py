@@ -24,6 +24,7 @@ from asreview.models.classifiers import get_classifier
 from asreview.models.feature_extraction import get_feature_model
 from asreview.models.query import get_query_model
 from asreview.types import type_n_queries
+from asreview.utils import pretty_format
 
 SETTINGS_TYPE_DICT = {
     "model": str,
@@ -71,16 +72,7 @@ def _convert_types(par_defaults, param):
             )
 
 
-def _pretty_format(result):
-    longest_key = max([len(key) for key in result])
-    result_str = ""
-    for key, value in result.items():
-        temp_str = f"{{key: <{longest_key}}}: {{value}}\n"
-        result_str += temp_str.format(key=key, value=value)
-    return result_str
-
-
-class ASReviewSettings:
+class ASReviewSettings(object):
     """Object to store the configuration of a review session.
 
     The main difference being that it type checks (some)
@@ -98,20 +90,17 @@ class ASReviewSettings:
         n_prior_included=None,
         n_prior_excluded=None,
         as_data=None,
-        model_param=None,
-        query_param=None,
-        balance_param=None,
-        feature_param=None,
-        **kwargs,
+        model_param={},
+        query_param={},
+        balance_param={},
+        feature_param={},
+        data_fp=None,
+        n_queries=None,
+        abstract_only=False,  # deprecated
+        mode=None,  # deprecated
+        n_papers=None,  # deprecated
+        data_name=None,  # deprecated
     ):
-        if feature_param is None:
-            feature_param = {}
-        if balance_param is None:
-            balance_param = {}
-        if query_param is None:
-            query_param = {}
-        if model_param is None:
-            model_param = {}
         self.model = model
         self.query_strategy = query_strategy
         self.balance_strategy = balance_strategy
@@ -136,13 +125,15 @@ class ASReviewSettings:
         self.feature_param = feature_param
 
     def __str__(self):
-        return _pretty_format(self.to_dict())
+        return pretty_format(self.to_dict())
 
     def __setattr__(self, name, value):
         try:
-            super().__setattr__(name, _map_settings_type(name, value))
+            super(ASReviewSettings, self).__setattr__(
+                name, _map_settings_type(name, value)
+            )
         except KeyError:
-            super().__setattr__(name, value)
+            super(ASReviewSettings, self).__setattr__(name, value)
 
     def to_dict(self):
         """Export default settings to dict."""

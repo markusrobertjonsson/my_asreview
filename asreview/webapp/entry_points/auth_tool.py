@@ -11,13 +11,15 @@ from sqlalchemy import create_engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
-import asreview as asr
+from asreview.entry_points.base import BaseEntryPoint
+from asreview.project import ASReviewProject
 from asreview.utils import asreview_path
 from asreview.webapp.authentication.models import Project
 from asreview.webapp.authentication.models import User
 from asreview.webapp.authentication.models import create_database_and_tables
 
-DEFAULT_DATABASE_URI = f"sqlite:///{str(asreview_path())}/asreview.production.sqlite"
+DEFAULT_DATABASE_URI = \
+    f"sqlite:///{str(asreview_path())}/asreview.production.sqlite"
 
 
 def auth_parser():
@@ -37,7 +39,7 @@ authenticated setup.
     # CREATE DB
     create_db_par = sub_parser.add_parser(
         "create-db",
-        help="Create the database necessary to authenticate the ASReview app.",
+        help="Create the database necessary to authenticate the ASReview app."
     )
 
     create_db_par.add_argument(
@@ -45,26 +47,25 @@ authenticated setup.
         "--db-uri",
         type=str,
         default=None,
-        help=(
-            "URI of the database. By default, the value is given by the environment "
-            "variable SQLALCHEMY_DATABASE_URI. If not set, the default is "
-            "'asreview.production.sqlite' in the ASReview folder."
-        ),
+        help=("URI of the database. By default, the value is given by the environment "
+              "variable SQLALCHEMY_DATABASE_URI. If not set, the default is "
+              "'asreview.production.sqlite' in the ASReview folder."),
     )
 
     # ADD USERS
-    user_par = sub_parser.add_parser("add-users", help="Add users into the database.")
+    user_par = sub_parser.add_parser(
+        "add-users",
+        help="Add users into the database."
+    )
 
     user_par.add_argument(
         "-d",
         "--db-uri",
         type=str,
         default=None,
-        help=(
-            "URI of the database. By default, the value is given by the environment "
-            "variable SQLALCHEMY_DATABASE_URI. If not set, the default is "
-            "'asreview.production.sqlite' in the ASReview folder."
-        ),
+        help=("URI of the database. By default, the value is given by the environment "
+              "variable SQLALCHEMY_DATABASE_URI. If not set, the default is "
+              "'asreview.production.sqlite' in the ASReview folder."),
     )
 
     user_par.add_argument(
@@ -85,11 +86,9 @@ authenticated setup.
         "--db-uri",
         type=str,
         default=None,
-        help=(
-            "URI of the database. By default, the value is given by the environment "
-            "variable SQLALCHEMY_DATABASE_URI. If not set, the default is "
-            "'asreview.production.sqlite' in the ASReview folder."
-        ),
+        help=("URI of the database. By default, the value is given by the environment "
+              "variable SQLALCHEMY_DATABASE_URI. If not set, the default is "
+              "'asreview.production.sqlite' in the ASReview folder."),
     )
 
     # LIST PROJECTS
@@ -122,11 +121,9 @@ authenticated setup.
         "--db-uri",
         type=str,
         default=None,
-        help=(
-            "URI of the database. By default, the value is given by the environment "
-            "variable SQLALCHEMY_DATABASE_URI. If not set, the default is "
-            "'asreview.production.sqlite' in the ASReview folder."
-        ),
+        help=("URI of the database. By default, the value is given by the environment "
+              "variable SQLALCHEMY_DATABASE_URI. If not set, the default is "
+              "'asreview.production.sqlite' in the ASReview folder."),
     )
 
     return parser
@@ -189,7 +186,7 @@ def get_users(session):
     return session.query(User).all()
 
 
-class AuthTool:
+class AuthTool(BaseEntryPoint):
     def execute(self, argv):
         parser = auth_parser()
         args = parser.parse_args(argv)
@@ -201,11 +198,9 @@ class AuthTool:
         # is not needed when the only command is "list-projects", all
         # other commands need a database session)
         if self.argv != ["list-projects"]:
-            self.uri = (
-                getattr(self.args, "db_uri", False)
-                or os.environ.get("SQLALCHEMY_DATABASE_URI", False)
-                or DEFAULT_DATABASE_URI
-            )
+            self.uri = getattr(self.args, "db_uri", False) or \
+                os.environ.get("SQLALCHEMY_DATABASE_URI", False) or \
+                DEFAULT_DATABASE_URI
             Session = sessionmaker()
             engine = create_engine(self.uri)
             Session.configure(bind=engine)
@@ -299,7 +294,7 @@ class AuthTool:
         projects = [f for f in asreview_path().glob("*") if f.is_dir()]
         result = []
         for folder in projects:
-            project = asr.Project(folder)
+            project = ASReviewProject(folder)
 
             # Raise a RuntimeError if the project version is too low.
             if project.config.get("version").startswith("0."):

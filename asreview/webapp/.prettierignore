@@ -1,5 +1,0 @@
-node_modules
-build
-*.py
-package-lock.json
-package.json

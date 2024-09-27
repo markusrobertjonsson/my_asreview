@@ -40,7 +40,7 @@ class UndersampleBalance(BaseBalance):
 
     def __init__(self, ratio=1.0, random_state=None):
         """Initialize the undersampling balance strategy."""
-        super().__init__()
+        super(UndersampleBalance, self).__init__()
         self.ratio = ratio
         self._random_state = get_random_state(random_state)
 
@@ -79,3 +79,11 @@ class UndersampleBalance(BaseBalance):
 
         self._random_state.shuffle(shuf_ind)
         return X[shuf_ind], y[shuf_ind]
+
+    def full_hyper_space(self):
+        from hyperopt import hp
+
+        parameter_space = {
+            "bal_ratio": hp.lognormal("bal_ratio", 0, 1),
+        }
+        return parameter_space, {}
